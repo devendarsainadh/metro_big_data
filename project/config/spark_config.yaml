@@ -1,0 +1,12 @@
+app_name: NATICUSdroidPermissionsPipeline
+master: local[*]
+shuffle_partitions: 8
+default_parallelism: 8
+adaptive_query_execution: true
+event_log_enabled: false
+log_level: WARN
+spark.executor.instances: 1
+spark.executor.cores: 4
+spark.executor.memory: 2g
+spark.driver.memory: 2g
+estimated_executor_cost_per_hour_usd: 0.25

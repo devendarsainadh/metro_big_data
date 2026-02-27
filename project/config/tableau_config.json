@@ -1,0 +1,28 @@
+{
+  "datasources": [
+    {"name": "etl_stage_timings", "path": "data/tableau_exports/etl_stage_timings.csv"},
+    {"name": "data_quality_report", "path": "data/tableau_exports/data_quality_report.csv"},
+    {"name": "pipeline_lineage", "path": "data/tableau_exports/pipeline_lineage.csv"},
+    {"name": "class_distribution", "path": "data/tableau_exports/class_distribution.csv"},
+    {"name": "split_summary", "path": "data/tableau_exports/split_summary.csv"},
+    {"name": "model_metrics", "path": "data/tableau_exports/model_metrics.csv"},
+    {"name": "cv_results", "path": "data/tableau_exports/cv_results.csv"},
+    {"name": "feature_importance", "path": "data/tableau_exports/feature_importance.csv"},
+    {"name": "family_risk_distribution", "path": "data/tableau_exports/family_risk_distribution.csv"},
+    {"name": "business_insights", "path": "data/tableau_exports/business_insights.csv"},
+    {"name": "business_metric_alignment", "path": "data/tableau_exports/business_metric_alignment.csv"},
+    {"name": "bootstrap_confidence_intervals", "path": "data/tableau_exports/bootstrap_confidence_intervals.csv"},
+    {"name": "resource_allocation", "path": "data/tableau_exports/resource_allocation.csv"},
+    {"name": "bottleneck_analysis", "path": "data/tableau_exports/bottleneck_analysis.csv"},
+    {"name": "scalability_strong", "path": "data/tableau_exports/scalability_strong.csv"},
+    {"name": "scalability_weak", "path": "data/tableau_exports/scalability_weak.csv"},
+    {"name": "cost_performance", "path": "data/tableau_exports/cost_performance.csv"}
+  ],
+  "refresh_mode": "manual",
+  "recommended_dashboards": [
+    "Dashboard 1 - Data quality and pipeline monitoring",
+    "Dashboard 2 - Model performance and feature importance",
+    "Dashboard 3 - Business insights and recommendations",
+    "Dashboard 4 - Scalability and cost analysis"
+  ]
+}

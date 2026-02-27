@@ -1,0 +1,4 @@
+experiment,partitions,multiplier,rows,duration_seconds,throughput_rows_per_sec
+weak_scaling,2,1,125,0.0399,3135.87
+weak_scaling,4,2,250,0.0297,8422.36
+weak_scaling,8,4,500,0.0429,11653.91

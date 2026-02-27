@@ -1,0 +1,7 @@
+app_family,family_risk,class,row_count
+production,medium,benign,1264001
+transition,medium,malware,124652
+idle,low,malware,114112
+idle,low,benign,7474
+production,medium,malware,5619
+transition,medium,benign,1090

@@ -1,0 +1,7 @@
+split,class,row_count
+test,benign,264693
+test,malware,37990
+train,benign,765684
+train,malware,144715
+validation,benign,242188
+validation,malware,61678

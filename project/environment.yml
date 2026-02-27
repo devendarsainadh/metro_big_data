@@ -1,0 +1,16 @@
+name: naticusdroid-permissions
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pandas
+  - numpy
+  - scikit-learn
+  - pyyaml
+  - jupyterlab
+  - matplotlib
+  - seaborn
+  - pyspark
+  - pip:
+      - ucimlrepo

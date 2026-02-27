@@ -1,0 +1,8 @@
+experiment,partitions,duration_seconds,estimated_cost_usd
+strong_scaling,2,0.0517,4e-06
+strong_scaling,4,0.0266,2e-06
+strong_scaling,8,0.0283,2e-06
+strong_scaling,16,0.0296,2e-06
+weak_scaling,2,0.0399,3e-06
+weak_scaling,4,0.0297,2e-06
+weak_scaling,8,0.0429,3e-06

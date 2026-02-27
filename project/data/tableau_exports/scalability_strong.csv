@@ -1,0 +1,5 @@
+experiment,partitions,rows,duration_seconds,throughput_rows_per_sec
+strong_scaling,2,5,0.0517,96.73
+strong_scaling,4,5,0.0266,187.98
+strong_scaling,8,5,0.0283,176.69
+strong_scaling,16,5,0.0296,169.07

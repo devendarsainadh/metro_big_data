@@ -1,0 +1,6 @@
+stage,status,input_rows,output_rows,notes
+ingestion_validation,success,1516948,1516948,Schema checks + required columns + null/duplicate metrics
+basic_etl,success,1516948,1516948,Dedup + normalization + partition by class
+broadcast_etl,success,1516948,1516948,Broadcast join with operating mode risk lookup
+feature_engineering,success,1516948,1516948,Custom transformer + vector assembler + checkpoint
+data_split,success,1516948,1516948,Stratified split by class (60/20/20 with tiny-sample fallback)

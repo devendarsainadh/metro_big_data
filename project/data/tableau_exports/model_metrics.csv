@@ -1,0 +1,12 @@
+algorithm,engine,split,runtime_seconds,auc,accuracy,f1,weightedPrecision,weightedRecall
+logistic_regression,pyspark_mllib,train,19.5139,0.9945,0.9957,0.9957,0.9957,0.9957
+logistic_regression,pyspark_mllib,validation,19.5139,0.9996,0.9962,0.9962,0.9962,0.9962
+logistic_regression,pyspark_mllib,test,19.5139,0.9976,0.9959,0.9959,0.9959,0.9959
+random_forest,pyspark_mllib,train,63.7242,1.0,0.9988,0.9988,0.9988,0.9988
+random_forest,pyspark_mllib,validation,63.7242,1.0,0.9991,0.9991,0.9991,0.9991
+random_forest,pyspark_mllib,test,63.7242,1.0,0.9999,0.9999,0.9999,0.9999
+gbt,pyspark_mllib,train,102.6232,1.0,0.9989,0.9989,0.9989,0.9989
+gbt,pyspark_mllib,validation,102.6232,1.0,0.9992,0.9992,0.9992,0.9992
+gbt,pyspark_mllib,test,102.6232,1.0,0.9998,0.9998,0.9998,0.9998
+sklearn_logistic_regression,sklearn_single_node,test,0.1073,0.9956,0.9954,0.9855,0.9942,0.9769
+sklearn_random_forest,sklearn_single_node,test,4.1389,1.0,0.9998,0.9994,0.9998,0.999

@@ -1,0 +1,5 @@
+{
+  "features": 86,
+  "label_column": "class",
+  "description": "Binary permission indicators with malware/benign target"
+}

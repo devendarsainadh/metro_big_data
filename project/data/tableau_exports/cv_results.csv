@@ -1,0 +1,13 @@
+algorithm,params,cv_metric_auc
+logistic_regression,"{""elasticNetParam"": 0.0, ""regParam"": 0.01}",0.994494
+logistic_regression,"{""elasticNetParam"": 0.5, ""regParam"": 0.01}",0.994149
+logistic_regression,"{""elasticNetParam"": 0.0, ""regParam"": 0.05}",0.992233
+logistic_regression,"{""elasticNetParam"": 0.5, ""regParam"": 0.05}",0.992819
+random_forest,"{""maxDepth"": 4, ""numTrees"": 20}",0.999789
+random_forest,"{""maxDepth"": 4, ""numTrees"": 40}",0.999934
+random_forest,"{""maxDepth"": 8, ""numTrees"": 20}",0.999991
+random_forest,"{""maxDepth"": 8, ""numTrees"": 40}",0.999992
+gbt,"{""maxDepth"": 3, ""maxIter"": 20}",0.999926
+gbt,"{""maxDepth"": 3, ""maxIter"": 40}",0.999973
+gbt,"{""maxDepth"": 5, ""maxIter"": 20}",0.999979
+gbt,"{""maxDepth"": 5, ""maxIter"": 40}",0.999988

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data artifacts
+data/raw/
+data/checkpoints/
+data/processed/
+data/tableau_exports/*.csv
+data/spark_ui_jobs/*.json
+
+# Spark
+spark-warehouse/
+metastore_db/
+
+# OS
+.DS_Store

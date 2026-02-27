@@ -1,0 +1,6 @@
+perm_camera,perm_sms,perm_contacts,perm_internet,class,app_family
+1,0,1,1,malware,family_a
+0,0,0,1,benign,family_b
+1,1,1,1,malware,family_c
+0,0,1,1,benign,family_b
+1,0,0,1,malware,family_a

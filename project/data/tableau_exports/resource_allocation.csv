@@ -1,0 +1,2 @@
+app_name,master,shuffle_partitions,default_parallelism,executor_instances,executor_cores,executor_memory,driver_memory,adaptive_query_execution
+NATICUSdroidPermissionsPipeline,local[*],8,8,1,4,2g,2g,True
