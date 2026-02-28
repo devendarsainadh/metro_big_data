@@ -1,4 +1,4 @@
-app_name: NATICUSdroidPermissionsPipeline
+app_name: MetroDataPipeline
 master: local[*]
 shuffle_partitions: 8
 default_parallelism: 8

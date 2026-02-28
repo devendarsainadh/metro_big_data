@@ -43,12 +43,12 @@ class StageLineage:
 class SensorRiskScoreTransformer(Transformer):
     """Domain transformer that scores rows using selected sensor signals."""
 
-    inputCols = Param(Params._dummy(), "inputCols", "Permission columns used for risk score")
+    inputCols = Param(Params._dummy(), "inputCols", "Sensor columns used for risk score")
     outputCol = Param(Params._dummy(), "outputCol", "Risk score output column")
 
-    def __init__(self, inputCols: list[str] | None = None, outputCol: str = "permission_risk_score"):
+    def __init__(self, inputCols: list[str] | None = None, outputCol: str = "sensor_risk_score"):
         super().__init__()
-        self._setDefault(inputCols=[], outputCol="permission_risk_score")
+        self._setDefault(inputCols=[], outputCol="sensor_risk_score")
         if inputCols is not None:
             self._set(inputCols=inputCols)
         self._set(outputCol=outputCol)
@@ -87,7 +87,7 @@ def load_config(path: str = "config/spark_config.yaml") -> dict[str, Any]:
 
 def build_spark(config: dict[str, Any], root: Path) -> SparkSession:
     builder = (
-        SparkSession.builder.appName(config.get("app_name", "NATICUSdroidPipeline"))
+        SparkSession.builder.appName(config.get("app_name", "MetroDataPipeline"))
         .master(config.get("master", "local[*]"))
         .config("spark.sql.shuffle.partitions", str(config.get("shuffle_partitions", 8)))
         .config("spark.default.parallelism", str(config.get("default_parallelism", 8)))
@@ -160,7 +160,7 @@ def ingest_and_validate(spark: SparkSession, csv_path: Path) -> tuple[DataFrame,
     numeric_types = {"int", "bigint", "double", "float", "smallint", "tinyint", "boolean", "long"}
     permission_cols = [name for name, dtype in raw.dtypes if name not in excluded and any(t in dtype.lower() for t in numeric_types)]
     if not permission_cols:
-        raise ValueError("No usable feature columns found for permissions")
+        raise ValueError("No usable feature columns found for sensor data")
 
     if "class" in raw.columns:
         # Normalize labels to benign/malware where possible.
