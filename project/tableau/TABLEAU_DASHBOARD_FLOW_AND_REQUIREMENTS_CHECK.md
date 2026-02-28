@@ -17,7 +17,7 @@
 3. For each source, create an `Extract` (not live text).
 4. Validate key field types:
    - Dimensions: `algorithm`, `split`, `stage`, `class`, `experiment`, `app_family`, `family_risk`
-   - Measures: `duration_seconds`, `row_count`, `accuracy`, `f1`, `auc`, `estimated_cost_usd`, `expected_profit_usd`
+   - Measures: `duration_seconds`, `row_count`, `anomaly_rate`, `score_p95`, `score_p99`, `estimated_cost_usd`, `expected_profit_usd`
 
 ### 3) Build Dashboard 1: Data Quality + Pipeline Monitoring
 1. Sheet `ETL Stage Runtime`: bar chart (`stage` vs `duration_seconds`) from `etl_stage_timings.csv`.
@@ -26,17 +26,16 @@
 4. Sheet `Class Distribution`: bar (`class`, `row_count`) from `class_distribution.csv`.
 5. Add filter controls: `stage`, `class`.
 
-### 4) Build Dashboard 2: Model Performance + Feature Importance
-1. Sheet `Model Metrics`: bar by `algorithm`; metric switch for `accuracy`, `f1`, `auc`.
-2. Sheet `CV Comparison`: bar (`algorithm` vs `cv_metric_auc`) from `cv_results.csv`.
+### 4) Build Dashboard 2: Anomaly Monitoring + Feature Importance
+1. Sheet `Model Metrics`: bar by `algorithm`; metric switch for `anomaly_rate`, `score_p95`, `score_p99`.
+2. Sheet `Anomaly Score Trend`: line/histogram on `anomaly_score` from `anomaly_scores.csv` by `algorithm`.
 3. Sheet `Top Features`: sorted bar (`feature`, `importance`) from `feature_importance.csv`.
-4. Sheet `Bootstrap CI`: error-bar/dumbbell chart using `ci_lower_95` and `ci_upper_95` from `bootstrap_confidence_intervals.csv`.
-5. Add parameter `Metric Selector` with values: `accuracy`, `f1`, `auc`.
+4. Add parameter `Metric Selector` with values: `anomaly_rate`, `score_p95`, `score_p99`.
 
 ### 5) Build Dashboard 3: Business Insights + Recommendations
 1. Sheet `Risk Distribution`: stacked bar using `app_family`, `family_risk`, `row_count`.
 2. Sheet `Recommendations`: table from `business_insights.csv`.
-3. Sheet `Business Metrics`: KPI cards from `business_metric_alignment.csv` (`expected_profit_usd`, `tp`, `fp`, `fn`).
+3. Sheet `Business Metrics`: KPI cards from `business_metric_alignment.csv` (`expected_profit_usd`).
 4. Add dashboard action: selecting a risk segment filters recommendations and KPI cards.
 
 ### 6) Build Dashboard 4: Scalability + Cost Analysis
@@ -50,7 +49,7 @@
 ### 7) Add best-practice interactions
 1. Use extracts for all sources.
 2. Add LOD fields:
-   - `{ FIXED [algorithm] : AVG([auc]) }`
+   - `{ FIXED [algorithm] : AVG([anomaly_rate]) }`
    - `{ FIXED [stage] : SUM([duration_seconds]) }`
    - `{ FIXED [experiment] : AVG([estimated_cost_usd]) }`
 3. Add filter actions and highlight actions across all 4 dashboards.

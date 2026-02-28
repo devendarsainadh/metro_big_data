@@ -8,6 +8,7 @@
     {"name": "model_metrics", "path": "data/tableau_exports/model_metrics.csv"},
     {"name": "cv_results", "path": "data/tableau_exports/cv_results.csv"},
     {"name": "feature_importance", "path": "data/tableau_exports/feature_importance.csv"},
+    {"name": "anomaly_scores", "path": "data/tableau_exports/anomaly_scores.csv"},
     {"name": "family_risk_distribution", "path": "data/tableau_exports/family_risk_distribution.csv"},
     {"name": "business_insights", "path": "data/tableau_exports/business_insights.csv"},
     {"name": "business_metric_alignment", "path": "data/tableau_exports/business_metric_alignment.csv"},
@@ -21,7 +22,7 @@
   "refresh_mode": "manual",
   "recommended_dashboards": [
     "Dashboard 1 - Data quality and pipeline monitoring",
-    "Dashboard 2 - Model performance and feature importance",
+    "Dashboard 2 - Anomaly monitoring and feature importance",
     "Dashboard 3 - Business insights and recommendations",
     "Dashboard 4 - Scalability and cost analysis"
   ]

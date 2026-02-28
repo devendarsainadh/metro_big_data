@@ -16,22 +16,17 @@ import pandas as pd
 import yaml
 from pyspark import StorageLevel
 from pyspark.ml import Transformer
-from pyspark.ml.classification import (
-    GBTClassifier,
-    LogisticRegression,
-    RandomForestClassifier,
-)
-from pyspark.ml.evaluation import BinaryClassificationEvaluator, MulticlassClassificationEvaluator
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.param.shared import Param, Params
-from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType
+from sklearn.ensemble import IsolationForest
 from sklearn.ensemble import RandomForestClassifier as SkRandomForestClassifier
 from sklearn.linear_model import LogisticRegression as SkLogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 from performance_profiler import PerformanceProfiler
 
@@ -167,27 +162,7 @@ def ingest_and_validate(spark: SparkSession, csv_path: Path) -> tuple[DataFrame,
     if not permission_cols:
         raise ValueError("No usable feature columns found for permissions")
 
-    if "class" not in raw.columns:
-        # Build pseudo-labels for unlabeled sensor datasets using robust outlier counts.
-        sensor_candidates = [c for c in ["dv_pressure", "reservoirs", "oil_temperature", "motor_current", "tp2", "tp3", "h1"] if c in permission_cols]
-        if not sensor_candidates:
-            sensor_candidates = permission_cols[: min(6, len(permission_cols))]
-
-        bounds = {}
-        for c in sensor_candidates:
-            q = raw.approxQuantile(c, [0.25, 0.75], 0.01)
-            if len(q) != 2:
-                continue
-            q1, q3 = q
-            iqr = q3 - q1
-            bounds[c] = (q1 - 1.5 * iqr, q3 + 1.5 * iqr)
-
-        anomaly_expr = F.lit(0)
-        for c, (lo, hi) in bounds.items():
-            anomaly_expr = anomaly_expr + F.when((F.col(c) < F.lit(lo)) | (F.col(c) > F.lit(hi)), F.lit(1)).otherwise(F.lit(0))
-
-        raw = raw.withColumn("class", F.when(anomaly_expr >= F.lit(2), F.lit("malware")).otherwise(F.lit("benign")))
-    else:
+    if "class" in raw.columns:
         # Normalize labels to benign/malware where possible.
         raw = raw.withColumn(
             "class",
@@ -195,8 +170,11 @@ def ingest_and_validate(spark: SparkSession, csv_path: Path) -> tuple[DataFrame,
             .when(F.lower(F.col("class").cast("string")).isin("0", "false", "benign", "normal"), F.lit("benign"))
             .otherwise(F.lower(F.col("class").cast("string"))),
         )
+        metrics = [{"metric": "ground_truth_label_available", "value": 1}]
+    else:
+        raw = raw.withColumn("class", F.lit("unknown"))
+        metrics = [{"metric": "ground_truth_label_available", "value": 0}]
 
-    metrics = []
     total_rows = raw.count()
     dedup_rows = raw.dropDuplicates().count()
     duplicate_rows = total_rows - dedup_rows
@@ -311,183 +289,171 @@ def _prepare_features(
         .otherwise(F.lit(0.0)),
     )
 
-    out = out.withColumn("label", F.when(F.col("class") == F.lit("malware"), F.lit(1.0)).otherwise(F.lit(0.0)))
-
     feature_cols = permission_cols + ["sensor_risk_score", "mode_risk_score"]
     assembler = VectorAssembler(inputCols=feature_cols, outputCol="features", handleInvalid="keep")
     out = assembler.transform(out)
     return out, feature_cols
 
 
-def _bootstrap_metric_cis(
-    predictions: DataFrame,
-    algorithm: str,
-    split_name: str = "test",
-    max_rows: int = 50000,
-    iterations: int = 200,
-) -> list[dict[str, Any]]:
-    pdf = predictions.select("label", "prediction").dropna().limit(max_rows).toPandas()
-    if len(pdf) < 50:
-        return []
-    y_true = pdf["label"].astype(int).to_numpy()
-    y_pred = pdf["prediction"].astype(int).to_numpy()
-    n = len(pdf)
-    rng = np.random.default_rng(42)
-
-    acc_scores = []
-    f1_scores = []
-    for _ in range(iterations):
-        idx = rng.integers(0, n, n)
-        yt = y_true[idx]
-        yp = y_pred[idx]
-        acc_scores.append(float((yt == yp).mean()))
-        tp = float(((yt == 1) & (yp == 1)).sum())
-        fp = float(((yt == 0) & (yp == 1)).sum())
-        fn = float(((yt == 1) & (yp == 0)).sum())
-        precision = tp / max(tp + fp, 1.0)
-        recall = tp / max(tp + fn, 1.0)
-        f1_scores.append((2 * precision * recall) / max(precision + recall, 1e-9))
-
-    rows = []
-    for metric_name, vals in [("accuracy", acc_scores), ("f1", f1_scores)]:
-        lo, hi = np.percentile(np.array(vals), [2.5, 97.5]).tolist()
-        rows.append(
-            {
-                "algorithm": algorithm,
-                "split": split_name,
-                "metric": metric_name,
-                "ci_lower_95": round(float(lo), 4),
-                "ci_upper_95": round(float(hi), 4),
-                "bootstrap_iterations": iterations,
-                "sample_rows": n,
-            }
-        )
-    return rows
+def _to_pandas_cap(df: DataFrame, columns: list[str], cap_rows: int = 150000) -> pd.DataFrame:
+    row_count = df.count()
+    if row_count <= cap_rows:
+        return df.select(*columns).toPandas()
+    frac = cap_rows / float(max(row_count, 1))
+    return df.select(*columns).sample(False, frac, seed=42).limit(cap_rows).toPandas()
 
 
-def _business_metric_row(predictions: DataFrame, algorithm: str, split_name: str = "test") -> dict[str, Any]:
-    c = predictions.select("label", "prediction").agg(
-        F.sum(F.when((F.col("label") == 1) & (F.col("prediction") == 1), 1).otherwise(0)).alias("tp"),
-        F.sum(F.when((F.col("label") == 0) & (F.col("prediction") == 1), 1).otherwise(0)).alias("fp"),
-        F.sum(F.when((F.col("label") == 1) & (F.col("prediction") == 0), 1).otherwise(0)).alias("fn"),
-    ).collect()[0]
-    tp = int(c["tp"] or 0)
-    fp = int(c["fp"] or 0)
-    fn = int(c["fn"] or 0)
-    expected_profit = (tp * 120.0) - (fp * 20.0) - (fn * 200.0)
-    return {
-        "algorithm": algorithm,
-        "split": split_name,
-        "tp": tp,
-        "fp": fp,
-        "fn": fn,
-        "expected_profit_usd": round(expected_profit, 2),
-        "assumption": "TP:+120, FP:-20, FN:-200",
+def _anomaly_summary(y_true: np.ndarray | None, anomaly_flags: np.ndarray, anomaly_scores: np.ndarray) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "anomaly_rate": round(float(anomaly_flags.mean()), 6),
+        "score_mean": round(float(np.mean(anomaly_scores)), 6),
+        "score_std": round(float(np.std(anomaly_scores)), 6),
+        "score_p95": round(float(np.percentile(anomaly_scores, 95)), 6),
+        "score_p99": round(float(np.percentile(anomaly_scores, 99)), 6),
+        "accuracy": None,
+        "f1": None,
+        "weightedPrecision": None,
+        "weightedRecall": None,
+        "auc": None,
     }
+    if y_true is None or len(np.unique(y_true)) < 2:
+        return row
 
+    anomaly_k = max(1, int(y_true.sum()))
+    topk_idx = np.argsort(anomaly_scores)[-anomaly_k:]
+    topk_flags = np.zeros_like(y_true, dtype=int)
+    topk_flags[topk_idx] = 1
+    tp = int(((topk_flags == 1) & (y_true == 1)).sum())
+    fp = int(((topk_flags == 1) & (y_true == 0)).sum())
+    fn = int(((topk_flags == 0) & (y_true == 1)).sum())
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = (2 * precision * recall) / max(precision + recall, 1e-12)
 
-def _evaluate_predictions(predictions: DataFrame, split_name: str, algorithm: str, runtime_s: float) -> list[dict[str, Any]]:
-    multiclass_metrics = {
-        "accuracy": MulticlassClassificationEvaluator(metricName="accuracy"),
-        "f1": MulticlassClassificationEvaluator(metricName="f1"),
-        "weightedPrecision": MulticlassClassificationEvaluator(metricName="weightedPrecision"),
-        "weightedRecall": MulticlassClassificationEvaluator(metricName="weightedRecall"),
-    }
-
-    # AUC can fail if a split has one class only.
     try:
-        auc = BinaryClassificationEvaluator(metricName="areaUnderROC").evaluate(predictions)
+        auc = roc_auc_score(y_true, anomaly_scores)
     except Exception:
         auc = float("nan")
 
-    row = {
-        "algorithm": algorithm,
-        "engine": "pyspark_mllib",
-        "split": split_name,
-        "runtime_seconds": round(runtime_s, 4),
-        "auc": round(float(auc), 4) if auc == auc else None,
-    }
-    for name, evaluator in multiclass_metrics.items():
-        row[name] = round(float(evaluator.evaluate(predictions)), 4)
-    return [row]
-
-
-def _train_cv_model(
-    train_df: DataFrame,
-    evaluator: BinaryClassificationEvaluator,
-    algorithm: str,
-    parallelism: int,
-) -> tuple[Any, list[dict[str, Any]], float]:
-    if algorithm == "logistic_regression":
-        estimator = LogisticRegression(
-            featuresCol="features",
-            labelCol="label",
-            maxIter=50,
-            regParam=0.01,
-            elasticNetParam=0.0,
-        )
-        grid = (
-            ParamGridBuilder()
-            .addGrid(estimator.regParam, [0.01, 0.05])
-            .addGrid(estimator.elasticNetParam, [0.0, 0.5])
-            .build()
-        )
-    elif algorithm == "random_forest":
-        estimator = RandomForestClassifier(featuresCol="features", labelCol="label", seed=42)
-        grid = (
-            ParamGridBuilder()
-            .addGrid(estimator.maxDepth, [4, 8])
-            .addGrid(estimator.numTrees, [20, 40])
-            .build()
-        )
-    elif algorithm == "gbt":
-        estimator = GBTClassifier(featuresCol="features", labelCol="label", seed=42)
-        grid = (
-            ParamGridBuilder()
-            .addGrid(estimator.maxDepth, [3, 5])
-            .addGrid(estimator.maxIter, [20, 40])
-            .build()
-        )
-    else:
-        raise ValueError(f"Unsupported algorithm: {algorithm}")
-
-    cv = CrossValidator(
-        estimator=estimator,
-        estimatorParamMaps=grid,
-        evaluator=evaluator,
-        numFolds=3,
-        parallelism=max(1, parallelism),
-        seed=42,
+    row.update(
+        {
+            "weightedPrecision": round(float(precision), 6),
+            "weightedRecall": round(float(recall), 6),
+            "f1": round(float(f1), 6),
+            "auc": round(float(auc), 6) if auc == auc else None,
+            "accuracy": round(float((topk_flags == y_true).mean()), 6),
+        }
     )
+    return row
 
-    start = time.perf_counter()
-    model = cv.fit(train_df)
-    runtime = time.perf_counter() - start
 
-    cv_rows = []
-    for pmap, score in zip(grid, model.avgMetrics):
-        serializable_params = {p.name: v for p, v in pmap.items()}
-        cv_rows.append(
+def _run_unsupervised_models(
+    train_pdf: pd.DataFrame,
+    eval_splits: dict[str, pd.DataFrame],
+    feature_cols: list[str],
+    has_ground_truth: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, bytes]]:
+    train_X = train_pdf[feature_cols].fillna(0.0).to_numpy(dtype=float)
+    scaler = StandardScaler()
+    train_scaled = scaler.fit_transform(train_X)
+
+    model_specs: list[tuple[str, Any, float]] = [
+        ("isolation_forest", IsolationForest(n_estimators=300, contamination="auto", random_state=42, n_jobs=-1), 0.95),
+        ("isolation_forest_strict", IsolationForest(n_estimators=300, contamination="auto", random_state=42, n_jobs=-1), 0.99),
+    ]
+
+    metric_rows: list[dict[str, Any]] = []
+    score_rows: list[dict[str, Any]] = []
+    cv_rows: list[dict[str, Any]] = []
+    fi_rows: list[dict[str, Any]] = []
+    model_payloads: dict[str, bytes] = {}
+
+    for algo, model, threshold_quantile in model_specs:
+        start = time.perf_counter()
+        model.fit(train_scaled)
+        runtime = time.perf_counter() - start
+        train_scores = (-model.decision_function(train_scaled)).astype(float)
+        threshold = float(np.quantile(train_scores, threshold_quantile))
+        model_payloads[algo] = pickle.dumps(
             {
-                "algorithm": algorithm,
-                "params": json.dumps(serializable_params, sort_keys=True),
-                "cv_metric_auc": round(float(score), 6),
+                "scaler": scaler,
+                "model": model,
+                "feature_cols": feature_cols,
+                "anomaly_threshold": threshold,
             }
         )
-    return model, cv_rows, runtime
+        cv_rows.append(
+            {
+                "algorithm": algo,
+                "params": json.dumps({"threshold_quantile": threshold_quantile, "threshold_value": threshold}, sort_keys=True),
+                "cv_metric_auc": None,
+                "selection_metric": "validation_score_p99",
+                "selection_value": None,
+            }
+        )
 
+        for split_name, split_pdf in eval_splits.items():
+            X = split_pdf[feature_cols].fillna(0.0).to_numpy(dtype=float)
+            X_scaled = scaler.transform(X)
+            anomaly_scores = (-model.decision_function(X_scaled)).astype(float)
+            anomaly_flags = (anomaly_scores >= threshold).astype(int)
 
-def _extract_feature_importance(model: Any, algorithm: str, feature_cols: list[str]) -> pd.DataFrame:
-    if algorithm == "logistic_regression":
-        coeffs = model.bestModel.coefficients.toArray().tolist()
-        rows = [
-            {"algorithm": algorithm, "feature": f, "importance": float(abs(v))}
-            for f, v in zip(feature_cols, coeffs)
-        ]
-    else:
-        imps = model.bestModel.featureImportances.toArray().tolist()
-        rows = [{"algorithm": algorithm, "feature": f, "importance": float(v)} for f, v in zip(feature_cols, imps)]
-    return pd.DataFrame(rows).sort_values("importance", ascending=False)
+            y_true = None
+            if has_ground_truth and "class" in split_pdf.columns:
+                y_true = (split_pdf["class"] == "malware").astype(int).to_numpy()
+
+            summary = _anomaly_summary(y_true, anomaly_flags, anomaly_scores)
+            summary.update(
+                {
+                    "algorithm": algo,
+                    "engine": "sklearn_unsupervised",
+                    "split": split_name,
+                    "runtime_seconds": round(runtime, 4),
+                    "anomaly_threshold": round(float(threshold), 6),
+                }
+            )
+            metric_rows.append(summary)
+            if split_name == "validation":
+                for i, row in enumerate(cv_rows):
+                    if row["algorithm"] == algo:
+                        cv_rows[i]["selection_value"] = round(float(summary["score_p99"]), 6)
+                        break
+
+            split_scores = pd.DataFrame(
+                {
+                    "algorithm": algo,
+                    "split": split_name,
+                    "anomaly_flag": anomaly_flags,
+                    "anomaly_score": anomaly_scores,
+                }
+            )
+            if "timestamp" in split_pdf.columns:
+                split_scores["timestamp"] = split_pdf["timestamp"]
+            if "class" in split_pdf.columns:
+                split_scores["class"] = split_pdf["class"]
+            score_rows.extend(split_scores.to_dict(orient="records"))
+
+        # Feature influence proxy: absolute correlation between feature and anomaly score on validation split.
+        valid_pdf = eval_splits.get("validation", train_pdf)
+        val_X = valid_pdf[feature_cols].fillna(0.0).to_numpy(dtype=float)
+        val_scores = (-model.decision_function(scaler.transform(val_X))).astype(float)
+        for idx, feat in enumerate(feature_cols):
+            col = val_X[:, idx]
+            if np.std(col) <= 1e-12:
+                corr = 0.0
+            else:
+                corr = float(np.corrcoef(col, val_scores)[0, 1])
+                if np.isnan(corr):
+                    corr = 0.0
+            fi_rows.append({"algorithm": algo, "feature": feat, "importance": round(abs(corr), 8)})
+
+    return (
+        pd.DataFrame(metric_rows),
+        pd.DataFrame(score_rows),
+        pd.DataFrame(cv_rows),
+        pd.DataFrame(fi_rows),
+        model_payloads,
+    )
 
 
 def _sklearn_baseline(pdf: pd.DataFrame, feature_cols: list[str]) -> tuple[pd.DataFrame, bytes]:
@@ -615,7 +581,7 @@ def _run_scalability(
 
         n_rows = scaled.count()
         start = time.perf_counter()
-        _ = scaled.repartition(partitions).groupBy("label").count().collect()
+        _ = scaled.repartition(partitions).groupBy("class").count().collect()
         duration = time.perf_counter() - start
 
         weak_rows.append(
@@ -709,7 +675,6 @@ def run(data_path: str, output_dir: str, run_scalability: bool) -> None:
 
         profiler.start("feature_engineering")
         featured_df, feature_cols = _prepare_features(enriched_df, permission_cols)
-        featured_df = _upsample_for_cv(featured_df, target_rows=120)
         featured_df = featured_df.checkpoint(eager=True)
         featured_df.persist(StorageLevel.MEMORY_AND_DISK)
         feat_count = featured_df.count()
@@ -726,6 +691,7 @@ def run(data_path: str, output_dir: str, run_scalability: bool) -> None:
 
         profiler.start("data_split")
         train_df, valid_df, test_df = _split_data(featured_df)
+        train_df = train_df.checkpoint(eager=True)
         train_df.persist(StorageLevel.MEMORY_AND_DISK)
         valid_df.persist(StorageLevel.MEMORY_AND_DISK)
         test_df.persist(StorageLevel.MEMORY_AND_DISK)
@@ -737,53 +703,37 @@ def run(data_path: str, output_dir: str, run_scalability: bool) -> None:
                 status="success",
                 input_rows=feat_count,
                 output_rows=split_rows,
-                notes="Stratified split by class (60/20/20 with tiny-sample fallback)",
+                notes="Time-aware or random split (60/20/20 with tiny-sample fallback)",
             )
         )
 
-        evaluator = BinaryClassificationEvaluator(metricName="areaUnderROC", labelCol="label")
-        ml_metrics: list[dict[str, Any]] = []
-        cv_metrics: list[dict[str, Any]] = []
-        fi_frames: list[pd.DataFrame] = []
-        bootstrap_rows: list[dict[str, Any]] = []
-        business_metric_rows: list[dict[str, Any]] = []
+        has_ground_truth = clean_df.filter(F.col("class") != "unknown").limit(1).count() > 0
+        split_columns = ["timestamp", *feature_cols, "class"] if "timestamp" in train_df.columns else [*feature_cols, "class"]
+        train_pdf = _to_pandas_cap(train_df, split_columns, cap_rows=120000)
+        valid_pdf = _to_pandas_cap(valid_df, split_columns, cap_rows=60000)
+        test_pdf = _to_pandas_cap(test_df, split_columns, cap_rows=60000)
 
-        for algorithm in ["logistic_regression", "random_forest", "gbt"]:
-            profiler.start(f"train_{algorithm}")
-            model, cv_rows, train_runtime = _train_cv_model(
-                train_df,
-                evaluator,
-                algorithm=algorithm,
-                parallelism=int(config.get("default_parallelism", 4)),
-            )
-            profiler.stop(f"train_{algorithm}", rows=train_df.count())
+        profiler.start("train_unsupervised")
+        ml_metrics_df, anomaly_scores_df, cv_metrics_df, feature_importance_df, model_payloads = _run_unsupervised_models(
+            train_pdf=train_pdf,
+            eval_splits={"train": train_pdf, "validation": valid_pdf, "test": test_pdf},
+            feature_cols=feature_cols,
+            has_ground_truth=has_ground_truth,
+        )
+        profiler.stop("train_unsupervised", rows=len(train_pdf))
 
-            model_path = models_dir / f"{algorithm}_spark_model"
-            if model_path.exists():
-                shutil.rmtree(model_path)
-            model.bestModel.write().overwrite().save(str(model_path))
+        for model_name, payload in model_payloads.items():
+            with (models_dir / f"{model_name}_unsupervised.pkl").open("wb") as f:
+                f.write(payload)
 
-            train_pred = model.transform(train_df)
-            valid_pred = model.transform(valid_df)
-            test_pred = model.transform(test_df)
-            ml_metrics.extend(_evaluate_predictions(train_pred, "train", algorithm, train_runtime))
-            ml_metrics.extend(_evaluate_predictions(valid_pred, "validation", algorithm, train_runtime))
-            ml_metrics.extend(_evaluate_predictions(test_pred, "test", algorithm, train_runtime))
-            cv_metrics.extend(cv_rows)
-            fi_frames.append(_extract_feature_importance(model, algorithm, feature_cols))
-            bootstrap_rows.extend(_bootstrap_metric_cis(test_pred, algorithm, split_name="test"))
-            business_metric_rows.append(_business_metric_row(test_pred, algorithm, split_name="test"))
-
-        featured_count = feat_count
-        baseline_cap = 120000
-        frac = min(1.0, baseline_cap / max(featured_count, 1))
-        pdf_for_sklearn = featured_df.select(*feature_cols, "class").sample(False, frac, seed=42).limit(baseline_cap).toPandas()
-        sk_df, sk_pickle = _sklearn_baseline(pdf_for_sklearn, feature_cols)
-        with (models_dir / "sklearn_baseline.pkl").open("wb") as f:
-            f.write(sk_pickle)
-
-        ml_metrics_df = pd.DataFrame(ml_metrics)
-        ml_metrics_df = pd.concat([ml_metrics_df, sk_df], ignore_index=True)
+        if has_ground_truth:
+            sk_df, sk_pickle = _sklearn_baseline(train_pdf[[*feature_cols, "class"]], feature_cols)
+            with (models_dir / "sklearn_baseline.pkl").open("wb") as f:
+                f.write(sk_pickle)
+            ml_metrics_df = pd.concat([ml_metrics_df, sk_df], ignore_index=True)
+        else:
+            with (models_dir / "sklearn_baseline.pkl").open("wb") as f:
+                f.write(pickle.dumps({"note": "skipped_supervised_baseline_no_ground_truth_labels"}))
 
         class_distribution = (
             enriched_df.groupBy("class").count().orderBy(F.desc("count")).toPandas().rename(columns={"count": "row_count"})
@@ -808,16 +758,20 @@ def run(data_path: str, output_dir: str, run_scalability: bool) -> None:
             .rename(columns={"count": "row_count", "operating_mode": "app_family", "mode_risk": "family_risk"})
         )
 
-        fault_rate = float((class_distribution.loc[class_distribution["class"] == "malware", "row_count"].sum() / max(class_distribution["row_count"].sum(), 1)))
         std_exprs = [F.stddev(F.col(c)).alias(c) for c in permission_cols]
         std_row = clean_df.agg(*std_exprs).toPandas().iloc[0].fillna(0.0)
         std_series = pd.to_numeric(std_row, errors="coerce").fillna(0.0)
+        test_anomaly_rate = float(
+            ml_metrics_df.loc[ml_metrics_df["split"] == "test", "anomaly_rate"].dropna().mean()
+            if "anomaly_rate" in ml_metrics_df.columns
+            else 0.0
+        )
         business_insights = pd.DataFrame(
             [
                 {
-                    "insight": "estimated_fault_rate",
-                    "value": round(fault_rate, 6),
-                    "recommendation": "Prioritize preventive maintenance" if fault_rate >= 0.05 else "Maintain current monitoring cadence",
+                    "insight": "estimated_anomaly_rate",
+                    "value": round(test_anomaly_rate, 6),
+                    "recommendation": "Increase alert review staffing" if test_anomaly_rate >= 0.05 else "Maintain current monitoring cadence",
                 },
                 {
                     "insight": "high_variability_sensor_count",
@@ -826,19 +780,23 @@ def run(data_path: str, output_dir: str, run_scalability: bool) -> None:
                 },
             ]
         )
-        business_metric_rows.extend(
-            [
+        business_metric_rows = []
+        for _, r in ml_metrics_df[ml_metrics_df["split"] == "test"].iterrows():
+            anomaly_rate = float(r.get("anomaly_rate") or 0.0)
+            population = int(test_df.count())
+            anomaly_count = int(round(population * anomaly_rate))
+            review_cost = anomaly_count * 8.0
+            business_metric_rows.append(
                 {
-                    "algorithm": "portfolio_summary",
+                    "algorithm": r.get("algorithm", "unknown"),
                     "split": "test",
-                    "tp": int(sum(r["tp"] for r in business_metric_rows)),
-                    "fp": int(sum(r["fp"] for r in business_metric_rows)),
-                    "fn": int(sum(r["fn"] for r in business_metric_rows)),
-                    "expected_profit_usd": round(sum(r["expected_profit_usd"] for r in business_metric_rows), 2),
-                    "assumption": "TP:+120, FP:-20, FN:-200",
+                    "tp": None,
+                    "fp": None,
+                    "fn": None,
+                    "expected_profit_usd": round(-review_cost, 2),
+                    "assumption": "Each anomaly alert review costs $8.00",
                 }
-            ]
-        )
+            )
 
         strong_scaling = pd.DataFrame()
         weak_scaling = pd.DataFrame()
@@ -876,13 +834,13 @@ def run(data_path: str, output_dir: str, run_scalability: bool) -> None:
                 },
                 {
                     "bottleneck": "Shuffle",
-                    "observation": "groupBy and CV operations trigger shuffle",
+                    "observation": "groupBy and split operations trigger shuffle",
                     "mitigation": "Tune spark.sql.shuffle.partitions and leverage AQE",
                 },
                 {
                     "bottleneck": "Computation",
-                    "observation": "CrossValidator with 3 models increases CPU time",
-                    "mitigation": "Bound grid size and raise CV parallelism within cluster limits",
+                    "observation": "Unsupervised model training + scoring adds CPU usage on sampled data",
+                    "mitigation": "Adjust sample caps and anomaly model complexity per hardware limits",
                 },
             ]
         )
@@ -894,11 +852,18 @@ def run(data_path: str, output_dir: str, run_scalability: bool) -> None:
         class_distribution.to_csv(outputs / "class_distribution.csv", index=False)
         split_summary.to_csv(outputs / "split_summary.csv", index=False)
         ml_metrics_df.to_csv(outputs / "model_metrics.csv", index=False)
-        pd.DataFrame(cv_metrics).to_csv(outputs / "cv_results.csv", index=False)
-        pd.concat(fi_frames, ignore_index=True).to_csv(outputs / "feature_importance.csv", index=False)
+        if cv_metrics_df.empty:
+            cv_metrics_df = pd.DataFrame(columns=["algorithm", "params", "cv_metric_auc", "selection_metric", "selection_value"])
+        cv_metrics_df.to_csv(outputs / "cv_results.csv", index=False)
+        if feature_importance_df.empty:
+            feature_importance_df = pd.DataFrame(columns=["algorithm", "feature", "importance"])
+        feature_importance_df.sort_values(["algorithm", "importance"], ascending=[True, False]).to_csv(outputs / "feature_importance.csv", index=False)
+        anomaly_scores_df.to_csv(outputs / "anomaly_scores.csv", index=False)
         family_risk_summary.to_csv(outputs / "family_risk_distribution.csv", index=False)
         business_insights.to_csv(outputs / "business_insights.csv", index=False)
-        pd.DataFrame(bootstrap_rows).to_csv(outputs / "bootstrap_confidence_intervals.csv", index=False)
+        pd.DataFrame(columns=["algorithm", "split", "metric", "ci_lower_95", "ci_upper_95", "bootstrap_iterations", "sample_rows"]).to_csv(
+            outputs / "bootstrap_confidence_intervals.csv", index=False
+        )
         pd.DataFrame(business_metric_rows).to_csv(outputs / "business_metric_alignment.csv", index=False)
         resource_allocation.to_csv(outputs / "resource_allocation.csv", index=False)
         bottlenecks.to_csv(outputs / "bottleneck_analysis.csv", index=False)

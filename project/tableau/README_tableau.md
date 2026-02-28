@@ -21,10 +21,10 @@ Add these files as Text sources:
 - `model_metrics.csv`
 - `cv_results.csv`
 - `feature_importance.csv`
+- `anomaly_scores.csv`
 - `family_risk_distribution.csv`
 - `business_insights.csv`
 - `business_metric_alignment.csv`
-- `bootstrap_confidence_intervals.csv`
 - `resource_allocation.csv`
 - `bottleneck_analysis.csv`
 - `scalability_strong.csv`
@@ -42,7 +42,7 @@ Add these files as Text sources:
    - click `Refresh`
 6. Verify field roles:
    - dimensions: `algorithm`, `split`, `stage`, `class`, `family_risk`, `app_family`, `experiment`
-   - measures: `row_count`, `duration_seconds`, `accuracy`, `f1`, `auc`, `estimated_cost_usd`, `expected_profit_usd`
+   - measures: `row_count`, `duration_seconds`, `anomaly_rate`, `score_p95`, `score_p99`, `estimated_cost_usd`, `expected_profit_usd`
 
 ## 4) Build simple dashboard 1: Data quality + pipeline monitoring
 
@@ -54,12 +54,12 @@ Keep it basic with 3 sheets:
 
 Optional filter: `class`
 
-## 5) Build simple dashboard 2: Model performance + feature importance
+## 5) Build simple dashboard 2: Anomaly model monitoring + feature importance
 
 Keep it basic with 3 sheets:
 
-1. Bar chart: `algorithm` vs `accuracy` (`model_metrics.csv`, `split = test`)
-2. Bar chart: `algorithm` vs `cv_metric_auc` (`cv_results.csv`)
+1. Bar chart: `algorithm` vs `anomaly_rate` (`model_metrics.csv`, `split = test`)
+2. Bar chart: `algorithm` vs `score_p99` (`model_metrics.csv`, `split = test`)
 3. Bar chart: top 10 `feature` vs `importance` (`feature_importance.csv`)
 
 ## 6) Build simple dashboard 3: Business insights
@@ -68,7 +68,7 @@ Keep it basic with 3 sheets:
 
 1. Stacked bar: `app_family` with color `family_risk` (`family_risk_distribution.csv`)
 2. Table: `insight`, `value`, `recommendation` (`business_insights.csv`)
-3. KPI text: `expected_profit_usd`, `tp`, `fp`, `fn` (`business_metric_alignment.csv`, use portfolio row)
+3. KPI text: `expected_profit_usd` (`business_metric_alignment.csv`)
 
 ## 7) Build simple dashboard 4: Scalability + cost
 

@@ -1,5 +1,3 @@
 algorithm,split,tp,fp,fn,expected_profit_usd,assumption
-logistic_regression,test,37070,324,920,4257920.0,"TP:+120, FP:-20, FN:-200"
-random_forest,test,37949,0,41,4545680.0,"TP:+120, FP:-20, FN:-200"
-gbt,test,37982,62,8,4555000.0,"TP:+120, FP:-20, FN:-200"
-portfolio_summary,test,113001,386,969,13358600.0,"TP:+120, FP:-20, FN:-200"
+isolation_forest,test,,,,-160792.0,Each anomaly alert review costs $8.00
+isolation_forest_strict,test,,,,-33680.0,Each anomaly alert review costs $8.00

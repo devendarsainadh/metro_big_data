@@ -1,4 +1,5 @@
 metric,value
+ground_truth_label_available,0
 total_rows,1516948
 duplicate_rows,0
 null_class,0

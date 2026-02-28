@@ -3,4 +3,4 @@ ingestion_validation,success,1516948,1516948,Schema checks + required columns + 
 basic_etl,success,1516948,1516948,Dedup + normalization + partition by class
 broadcast_etl,success,1516948,1516948,Broadcast join with operating mode risk lookup
 feature_engineering,success,1516948,1516948,Custom transformer + vector assembler + checkpoint
-data_split,success,1516948,1516948,Stratified split by class (60/20/20 with tiny-sample fallback)
+data_split,success,1516948,1516948,Time-aware or random split (60/20/20 with tiny-sample fallback)

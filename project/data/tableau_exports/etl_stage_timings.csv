@@ -1,9 +1,7 @@
 stage,duration_seconds,rows
-ingestion_validation,9.5614,1516948
-basic_etl,2.7447,1516948
-broadcast_etl,2.2335,1516948
-feature_engineering,4.0544,1516948
-data_split,4.1437,1516948
-train_logistic_regression,19.652,910399
-train_random_forest,63.885,910399
-train_gbt,102.7534,910399
+ingestion_validation,8.6424,1516948
+basic_etl,3.3676,1516948
+broadcast_etl,3.2385,1516948
+feature_engineering,5.6886,1516948
+data_split,7.1801,1516948
+train_unsupervised,7.3559,119696

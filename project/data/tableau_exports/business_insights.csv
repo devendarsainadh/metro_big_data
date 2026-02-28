@@ -1,3 +1,3 @@
 insight,value,recommendation
-estimated_fault_rate,0.161102,Prioritize preventive maintenance
+estimated_anomaly_rate,0.040086,Maintain current monitoring cadence
 high_variability_sensor_count,8.0,Review sensors with high variability for drift and calibration

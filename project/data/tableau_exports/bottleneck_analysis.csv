@@ -1,4 +1,4 @@
 bottleneck,observation,mitigation
 I/O,CSV input incurs parsing overhead; parquet recommended for production reuse,Persist cleaned dataset to parquet and use predicate pushdown
-Shuffle,groupBy and CV operations trigger shuffle,Tune spark.sql.shuffle.partitions and leverage AQE
-Computation,CrossValidator with 3 models increases CPU time,Bound grid size and raise CV parallelism within cluster limits
+Shuffle,groupBy and split operations trigger shuffle,Tune spark.sql.shuffle.partitions and leverage AQE
+Computation,Unsupervised model training + scoring adds CPU usage on sampled data,Adjust sample caps and anomaly model complexity per hardware limits

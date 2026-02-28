@@ -2,48 +2,38 @@
   "stage_metrics": [
     {
       "stage": "ingestion_validation",
-      "duration_seconds": 9.5614,
+      "duration_seconds": 8.6424,
       "rows": 1516948
     },
     {
       "stage": "basic_etl",
-      "duration_seconds": 2.7447,
+      "duration_seconds": 3.3676,
       "rows": 1516948
     },
     {
       "stage": "broadcast_etl",
-      "duration_seconds": 2.2335,
+      "duration_seconds": 3.2385,
       "rows": 1516948
     },
     {
       "stage": "feature_engineering",
-      "duration_seconds": 4.0544,
+      "duration_seconds": 5.6886,
       "rows": 1516948
     },
     {
       "stage": "data_split",
-      "duration_seconds": 4.1437,
+      "duration_seconds": 7.1801,
       "rows": 1516948
     },
     {
-      "stage": "train_logistic_regression",
-      "duration_seconds": 19.652,
-      "rows": 910399
-    },
-    {
-      "stage": "train_random_forest",
-      "duration_seconds": 63.885,
-      "rows": 910399
-    },
-    {
-      "stage": "train_gbt",
-      "duration_seconds": 102.7534,
-      "rows": 910399
+      "stage": "train_unsupervised",
+      "duration_seconds": 7.3559,
+      "rows": 119696
     }
   ],
   "extra": {
     "selected_stage": "full_pipeline",
     "data_path": "data/raw/MetroPT3(AirCompressor).csv",
-    "run_scalability": false
+    "run_scalability": true
   }
 }

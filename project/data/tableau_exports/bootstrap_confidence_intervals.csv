@@ -1,7 +1,1 @@
 algorithm,split,metric,ci_lower_95,ci_upper_95,bootstrap_iterations,sample_rows
-logistic_regression,test,accuracy,0.98,0.9823,200,50000
-logistic_regression,test,f1,0.9866,0.9882,200,50000
-random_forest,test,accuracy,0.9989,0.9994,200,50000
-random_forest,test,f1,0.9993,0.9996,200,50000
-gbt,test,accuracy,0.9997,0.9999,200,50000
-gbt,test,f1,0.9998,0.9999,200,50000
